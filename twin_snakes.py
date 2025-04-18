@@ -36,6 +36,37 @@ for y in range(HEIGHT):
     b = int(TOP_BG[2] * (1 - t) + BOTTOM_BG[2] * t)
     pygame.draw.line(background, (r, g, b), (0, y), (WIDTH, y))
 
+# Button for the menu
+class Button:
+    def __init__(self, x, y, width, height, text):
+        self.rect = pygame.Rect(x, y, width, height)
+        self.text = text
+        self.is_hovered = False
+
+    def draw(self, surface):
+        # Button glows when the mouse hovers over it
+        color = (30, 200, 250) if self.is_hovered else (20, 100, 150)
+        glow = 3 if self.is_hovered else 0
+
+        if glow > 0:
+            glow_rect = self.rect.inflate(glow * 2, glow * 2)
+            pygame.draw.rect(surface, (60, 220, 255), glow_rect, border_radius=8)
+
+        pygame.draw.rect(surface, color, self.rect, border_radius=5)
+        pygame.draw.rect(surface, (100, 200, 255), self.rect, 2, border_radius=5)
+
+        menuFont = pygame.font.SysFont(None, 36)
+        text_surf = menuFont.render(self.text, True, WHITE)
+        text_rect = text_surf.get_rect(center=self.rect.center)
+        surface.blit(text_surf, text_rect)
+
+    def check_hover(self, pos):
+        self.is_hovered = self.rect.collidepoint(pos)
+        return self.is_hovered
+
+    def is_clicked(self, pos, click):
+        return click and self.check_hover(pos)
+
 class Snake:
     def __init__(self, x, y, head_color, controls):
         self.start_pos = (x, y)
@@ -113,7 +144,7 @@ pygame.mixer.music.set_volume(0.5)
 pygame.mixer.music.play(-1)
 
 # Display setup
-screen = pygame.display.set_mode((WIDTH,HEIGHT)); pygame.display.set_caption('Twin Snakes')
+screen = pygame.display.set_mode((WIDTH,HEIGHT)); pygame.display.set_caption('Tron Snakes')
 clock = pygame.time.Clock(); font = pygame.font.SysFont(None,48)
 controls1 = {pygame.K_w:DIRECTIONS['UP'],pygame.K_s:DIRECTIONS['DOWN'],pygame.K_a:DIRECTIONS['LEFT'],pygame.K_d:DIRECTIONS['RIGHT']}
 controls2 = {pygame.K_UP:DIRECTIONS['UP'],pygame.K_DOWN:DIRECTIONS['DOWN'],pygame.K_LEFT:DIRECTIONS['LEFT'],pygame.K_RIGHT:DIRECTIONS['RIGHT']}
@@ -125,34 +156,142 @@ def draw_game_over(msg):
     i=font.render('R:Restart Q:Quit',True,WHITE); screen.blit(i,i.get_rect(center=(WIDTH//2,HEIGHT//2+50)))
     pygame.display.flip()
 
+
+def draw_start_menu():
+    screen.blit(background, (0, 0))
+
+    # Draw title with glow effect
+    title_font = pygame.font.SysFont(None, 80)
+    title = title_font.render("TRON SNAKES", True, (0, 200, 255))
+    title_rect = title.get_rect(center=(WIDTH // 2, HEIGHT // 4))
+
+    # Glow effect
+    glow_surf = pygame.Surface((title.get_width() + 20, title.get_height() + 20), pygame.SRCALPHA)
+    pygame.draw.rect(glow_surf, (0, 150, 255, 100), glow_surf.get_rect(), border_radius=10)
+    screen.blit(glow_surf, glow_surf.get_rect(center=title_rect.center))
+    screen.blit(title, title_rect)
+
+    # Draw animated particles in background
+    for i in range(len(particles) - 1, -1, -1):
+        particles[i].update()
+        particles[i].draw(screen)
+        if particles[i].life <= 0:
+            particles.pop(i)
+
+    # Randomly add new particles
+    if random.random() < 0.2:
+        particles.append(Particle((random.randint(0, WIDTH), random.randint(0, HEIGHT))))
+
+    # Draw player controls
+    p1_font = pygame.font.SysFont(None, 24)
+    p1_text = p1_font.render("Player 1: WASD to move", True, GREEN)
+    p1_rect = p1_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 140))
+
+    p2_font = pygame.font.SysFont(None, 24)
+    p2_text = p2_font.render("Player 2: Arrow Keys to move", True, RED)
+    p2_rect = p2_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 170))
+
+    screen.blit(p1_text, p1_rect)
+    screen.blit(p2_text, p2_rect)
+
+    # Draw buttons
+    start_button.draw(screen)
+    quit_button.draw(screen)
+
+    pygame.display.flip()
+
+
+# Create menu buttons
+start_button = Button(WIDTH // 2 - 100, HEIGHT // 2, 200, 50, "START GAME")
+quit_button = Button(WIDTH // 2 - 100, HEIGHT // 2 + 60, 200, 50, "QUIT")
+
+# Game states
+MENU = 0
+PLAYING = 1
+GAME_OVER = 2
+game_state = MENU
+
 # Main loop
-over=False; winner=''
+over = False
+winner = ''
 while True:
-    if not over:
+    # Handle common events
+    mouse_pos = pygame.mouse.get_pos()
+    mouse_clicked = False
+
+    for e in pygame.event.get():
+        if e.type == pygame.QUIT:
+            pygame.quit()
+            sys.exit()
+        elif e.type == pygame.KEYDOWN:
+            if game_state == PLAYING:
+                s1.change_direction(e.key)
+                s2.change_direction(e.key)
+            elif game_state == GAME_OVER:
+                if e.key == pygame.K_r:
+                    s1.reset()
+                    s2.reset()
+                    food.respawn()
+                    particles.clear()
+                    over = False
+                    game_state = PLAYING
+                elif e.key == pygame.K_q:
+                    game_state = MENU
+            elif game_state == MENU:
+                if e.key == pygame.K_RETURN:  # Enter key also starts game
+                    game_state = PLAYING
+        elif e.type == pygame.MOUSEBUTTONDOWN:
+            mouse_clicked = True
+
+    # Update and render based on game state
+    if game_state == MENU:
+        # Update button hover states
+        start_button.check_hover(mouse_pos)
+        quit_button.check_hover(mouse_pos)
+
+        # Handle button clicks
+        if start_button.is_clicked(mouse_pos, mouse_clicked):
+            s1.reset()
+            s2.reset()
+            food.respawn()
+            particles.clear()
+            game_state = PLAYING
+        elif quit_button.is_clicked(mouse_pos, mouse_clicked):
+            pygame.quit()
+            sys.exit()
+
+        # Draw menu
+        draw_start_menu()
+
+    elif game_state == PLAYING:
+        # Game logic (from original code)
         clock.tick(FPS)
-        for e in pygame.event.get():
-            if e.type==pygame.QUIT: pygame.quit(); sys.exit()
-            if e.type==pygame.KEYDOWN: s1.change_direction(e.key); s2.change_direction(e.key)
-        s1.move(); s2.move()
-        for sn in (s1,s2):
-            if sn.body[0]==food.pos:
+        s1.move()
+        s2.move()
+        for sn in (s1, s2):
+            if sn.body[0] == food.pos:
                 if eat_sound: eat_sound.play()
-                sn.grow=True; food.respawn()
-        particles[:] = [p for p in particles if p.life>0]
+                sn.grow = True
+                food.respawn()
+        particles[:] = [p for p in particles if p.life > 0]
         for p in particles: p.update()
-        p1,p2=s1.body[0],s2.body[0]
+        p1, p2 = s1.body[0], s2.body[0]
         dead1 = p1 in s1.body[1:] or p1 in s2.body
         dead2 = p2 in s2.body[1:] or p2 in s1.body
         if dead1 or dead2:
             if die_sound: die_sound.play()
-            over=True; winner='Tie!' if dead1 and dead2 else 'P2 Wins!' if dead1 else 'P1 Wins!'
-        screen.blit(background,(0,0)); food.draw(screen); s1.draw(screen); s2.draw(screen)
+            over = True
+            winner = 'Tie!' if dead1 and dead2 else 'P2 Wins!' if dead1 else 'P1 Wins!'
+            game_state = GAME_OVER
+
+        # Draw game screen (from original code)
+        screen.blit(background, (0, 0))
+        food.draw(screen)
+        s1.draw(screen)
+        s2.draw(screen)
         for p in particles: p.draw(screen)
         pygame.display.flip()
-    else:
+
+    elif game_state == GAME_OVER:
+        # Draw game over screen (from original code)
         draw_game_over(winner)
-        for e in pygame.event.get():
-            if e.type==pygame.QUIT: pygame.quit(); sys.exit()
-            if e.type==pygame.KEYDOWN:
-                if e.key==pygame.K_r: s1.reset(); s2.reset(); food.respawn(); particles.clear(); over=False
-                elif e.key==pygame.K_q: pygame.quit(); sys.exit()
